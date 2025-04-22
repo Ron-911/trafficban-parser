@@ -1,31 +1,38 @@
 # session_manager.py
-import random
+
 from playwright.async_api import async_playwright
 
-USER_AGENTS = [
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/122.0.0.0 Safari/537.36",
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 Version/15.1 Safari/605.1.15",
-    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36",
-]
+async def get_stealth_context(playwright):
+    browser = await playwright.chromium.launch(
+        headless=True,
+        args=[
+            "--disable-blink-features=AutomationControlled",
+            "--no-sandbox",
+            "--disable-dev-shm-usage",
+        ]
+    )
 
-VIEWPORTS = [
-    {"width": 1280, "height": 720},
-    {"width": 1920, "height": 1080},
-    {"width": 375, "height": 667},  # мобильный
-]
+    context = await browser.new_context(
+        user_agent=generate_random_user_agent(),
+        locale="en-US",
+        viewport={"width": 1280, "height": 800},
+    )
 
-async def get_browser_context(proxy=None):
-    playwright = await async_playwright().start()
-    browser = await playwright.chromium.launch(headless=True)
+    # Optional: remove Playwright automation traces
+    await context.add_init_script(
+        """Object.defineProperty(navigator, 'webdriver', {get: () => undefined})"""
+    )
 
-    context_args = {
-        "user_agent": random.choice(USER_AGENTS),
-        "viewport": random.choice(VIEWPORTS),
-        "java_script_enabled": True,
-    }
+    return context, browser
 
-    if proxy:
-        context_args["proxy"] = {"server": proxy}
 
-    context = await browser.new_context(**context_args)
-    return playwright, browser, context
+def generate_random_user_agent():
+    import random
+
+    user_agents = [
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.1 Safari/605.1.15",
+        "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
+        "Mozilla/5.0 (iPhone; CPU iPhone OS 16_2 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.2 Mobile/15E148 Safari/604.1",
+    ]
+    return random.choice(user_agents)
