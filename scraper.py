@@ -91,11 +91,15 @@ proxies = {
 "United Kingdom": "https://trafficban.com/country.united_kingdom.home.205.ru.html",
 }
 
-async def parse_country(playwright, country, url):
+async def parse_country(playwright, country, url, proxies=None):
+    print("parse_country called with:", playwright, country, url, proxies=None)
     proxy = random.choice(proxies) if proxies else None
+    print("Proxies list:", proxies)
     launch_args = {"headless": True}
     if proxy:
         launch_args["proxy"] = {"server": proxy}
+    proxy = random.choice(proxies) if proxies else None
+    print("Proxies list:", proxies)
 
     browser = await playwright.chromium.launch(**launch_args)
     context = await browser.new_context(
