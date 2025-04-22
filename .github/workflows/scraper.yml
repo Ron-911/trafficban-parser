@@ -1,0 +1,33 @@
+name: Traffic Ban Scraper
+
+on:
+  schedule:
+    - cron: '0 6 * * *'  # запуск каждый день в 6 утра
+  workflow_dispatch:     # возможность запуска вручную
+
+jobs:
+  scraper_job:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+    
+    - uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+
+    - name: Install dependencies
+      run: |
+        pip install -r requirements.txt
+        playwright install chromium
+
+    - name: Run scraper
+      run: python scraper.py
+
+    - name: Commit and Push if changed
+      run: |
+        git config --global user.name 'github-actions'
+        git config --global user.email 'github-actions@github.com'
+        git add data/bans.csv
+        git commit -m "Update bans.csv" || echo "No changes to commit"
+        git push
