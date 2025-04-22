@@ -1,82 +1,74 @@
+
 import asyncio
 import csv
-import os
 from datetime import datetime
-
-from session_manager import get_browser_context
-
-BASE_URL = "https://www.trafficban.com"
-COUNTRIES = {
-    "Germany": "/germany",
-    "France": "/france",
-    "Italy": "/italy",
-    "Austria": "/austria",
-    "Czech Republic": "/czech-republic",
-    "Poland": "/poland",
-    "Hungary": "/hungary",
-    "Slovakia": "/slovakia",
-    "Slovenia": "/slovenia",
-    "Switzerland": "/switzerland",
-    "Spain": "/spain",
-    "Portugal": "/portugal",
-}
+from playwright.async_api import async_playwright
+from session_manager import get_stealth_context
 
 OUTPUT_FILE = "traffic_bans.csv"
 
+async def get_country_links(page):
+    await page.goto("https://www.trafficban.com/", timeout=60000)
+    await page.wait_for_selector("#countrySelect option")
+    options = await page.query_selector_all("#countrySelect option")
+    country_links = {}
+    for option in options:
+        value = await option.get_attribute("value")
+        text = await option.inner_text()
+        if value and value != "0":
+            country_links[text.strip()] = f"https://www.trafficban.com{value}"
+    return country_links
 
-async def parse_country(country: str, url: str):
-    playwright, browser, context = await get_browser_context()
-    page = await context.new_page()
-    result = []
+async def scrape():
+    async with async_playwright() as p:
+        browser = await p.chromium.launch(headless=True)
+        context = await get_stealth_context(browser)
+        page = await context.new_page()
 
-    try:
-        await page.goto(url, timeout=60000)
-        rows = await page.locator("table.table.table-hover tbody tr").all()
+        country_links = await get_country_links(page)
+        await page.close()
 
-        for row in rows:
-            columns = await row.locator("td").all_text_contents()
-            if len(columns) >= 4:
-                result.append({
-                    "Country": country,
-                    "Date": columns[0].strip(),
-                    "Time": columns[1].strip(),
-                    "Type of vehicles": columns[2].strip(),
-                    "Description": columns[3].strip()
-                })
-    except Exception as e:
-        print(f"Error parsing {country}: {e}")
-    finally:
-        await context.close()
+        rows = []
+        failed_countries = []
+
+        for country_name, url in country_links.items():
+            try:
+                page = await context.new_page()
+                await page.goto(url, timeout=60000)
+                await page.wait_for_selector("table.table", timeout=10000)
+
+                table = await page.query_selector("table.table")
+                html_content = await table.inner_html()
+                if "No data" in html_content or not html_content.strip():
+                    failed_countries.append(country_name)
+                    await page.close()
+                    continue
+
+                rows_html = await table.query_selector_all("tbody tr")
+                for row in rows_html:
+                    cells = await row.query_selector_all("td")
+                    values = [await cell.inner_text() for cell in cells]
+                    rows.append([country_name] + values)
+
+                await page.close()
+
+            except Exception as e:
+                print(f"❌ Ошибка при загрузке {country_name}: {e}")
+                failed_countries.append(country_name)
+
         await browser.close()
-        await playwright.stop()
 
-    return result
-
-
-async def main():
-    all_data = []
-    tasks = []
-
-    for country, path in COUNTRIES.items():
-        url = BASE_URL + path
-        tasks.append(parse_country(country, url))
-
-    results = await asyncio.gather(*tasks)
-
-    for country_data in results:
-        if country_data:
-            all_data.extend(country_data)
-
-    if all_data:
-        keys = all_data[0].keys()
         with open(OUTPUT_FILE, "w", newline="", encoding="utf-8") as f:
-            writer = csv.DictWriter(f, fieldnames=keys)
-            writer.writeheader()
-            writer.writerows(all_data)
-        print(f"Saved data to {OUTPUT_FILE}")
-    else:
-        print("No data extracted.")
+            writer = csv.writer(f)
+            writer.writerow(["Country", "Date", "From", "To", "Vehicles", "Description"])
+            writer.writerows(rows)
 
+        if failed_countries:
+            print("\n⚠️ Не удалось получить данные для следующих стран:")
+            for c in failed_countries:
+                print(f"- {c}")
+        else:
+            print("✅ Все страны успешно загружены")
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    asyncio.run(scrape())
