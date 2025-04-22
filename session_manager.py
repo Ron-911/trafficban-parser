@@ -2,8 +2,9 @@
 
 from playwright.async_api import async_playwright
 
-async def get_stealth_context(playwright):
-    browser = await playwright.chromium.launch(
+# session_manager.py
+async def get_stealth_context(chromium):
+    browser = await chromium.launch(
         headless=True,
         args=[
             "--disable-blink-features=AutomationControlled",
@@ -11,6 +12,8 @@ async def get_stealth_context(playwright):
             "--disable-dev-shm-usage",
         ]
     )
+    ...
+    return context, browser
 
     context = await browser.new_context(
         user_agent=generate_random_user_agent(),
