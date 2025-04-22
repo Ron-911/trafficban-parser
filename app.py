@@ -1,17 +1,18 @@
 import streamlit as st
 import pandas as pd
+import os
 
-st.set_page_config(page_title="Traffic Bans Dashboard", layout="wide")
-st.title("🚛 Traffic Ban Overview for European Countries")
+st.set_page_config(page_title="🚛 Traffic Bans", layout="wide")
+st.title("🚦 Traffic Ban Summary Dashboard")
 
-try:
-    df = pd.read_csv("data/bans.csv")
-    st.success(f"Loaded {len(df)} bans")
-    country_filter = st.selectbox("Filter by country", ["All"] + sorted(df.Country.unique().tolist()))
+data_path = "data/bans.csv"
 
-    if country_filter != "All":
-        df = df[df.Country == country_filter]
-
+if not os.path.exists(data_path):
+    st.warning("Файл data/bans.csv не найден. Запусти парсер через GitHub Actions.")
+else:
+    df = pd.read_csv(data_path)
+    st.success(f"Данные загружены: {len(df)} записей")
+    country = st.selectbox("Страна", ["Все"] + sorted(df["Country"].unique()))
+    if country != "Все":
+        df = df[df["Country"] == country]
     st.dataframe(df, use_container_width=True)
-except FileNotFoundError:
-    st.warning("No data available. Run the scraper first.")
