@@ -23,6 +23,7 @@ async def parse_country(page, country, url):
             time_range = (await time_el.text_content()).strip()
             results.append([country, date, time_range])
 
+    print(f"[{country}] Parsed {len(results)} rows")
     return results
 
 async def main():
@@ -46,6 +47,8 @@ async def main():
         if row_tuple not in seen:
             seen.add(row_tuple)
             unique_results.append(row)
+
+    print(f"Total unique rows: {len(unique_results)}")
 
     os.makedirs('data', exist_ok=True)
     with open('data/bans.csv', 'w', newline='') as f:
