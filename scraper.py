@@ -1,115 +1,85 @@
 import csv
 import asyncio
 import os
+import random
 from playwright.async_api import async_playwright
 
 country_urls = {
-"Albania": "https://trafficban.com/country.albania.home.2.ru.html",
-"Austria": "https://trafficban.com/country.austria.home.14.ru.html",
-"Belarus": "https://trafficban.com/country.belarus.home.25.ru.html",
-"Belgium": "https://trafficban.com/country.belgium.home.20.ru.html",
-"Bosnia and Herzegovina": "https://trafficban.com/country.bosnia_and_herzegovina.home.27.ru.html",
-"Bulgaria": "https://trafficban.com/country.bulgaria.home.32.ru.html",
-"Croatia": "https://trafficban.com/country.croatia.home.37.ru.html",
-"Czech Republic": "https://trafficban.com/country.czech_republic.home.41.ru.html",
-"Denmark": "https://trafficban.com/country.denmark.home.42.ru.html",
-"Estonia": "https://trafficban.com/country.estonia.home.50.ru.html",
-"Finland": "https://trafficban.com/country.finland.home.55.ru.html",
-"France": "https://trafficban.com/country.france.home.56.ru.html",
-"Germany": "https://trafficban.com/country.germany.home.135.ru.html",
-"Greece": "https://trafficban.com/country.greece.home.61.ru.html",
-"Hungary": "https://trafficban.com/country.hungary.home.212.ru.html",
-"Ireland": "https://trafficban.com/country.ireland.home.81.ru.html",
-"Italy": "https://trafficban.com/country.italy.home.213.ru.html",
-"Kazakhstan": "https://trafficban.com/country.kazakhstan.home.95.ru.html",
-"Latvia": "https://trafficban.com/country.latvia.home.110.ru.html",
-"Liechtenstein": "https://trafficban.com/country.liechtenstein.home.219.ru.html",
-"Lithuania": "https://trafficban.com/country.lithuania.home.108.ru.html",
-"Luxembourg": "https://trafficban.com/country.luxembourg.home.109.ru.html",
-"Macedonia": "https://trafficban.com/country.macedonia.home.111.ru.html",
-"Moldova": "https://trafficban.com/country.moldova.home.126.ru.html",
-"Montenegro": "https://trafficban.com/country.montenegro.home.40.ru.html",
-"Netherlands": "https://trafficban.com/country.netherlands.home.76.ru.html",
-"Norway": "https://trafficban.com/country.norway.home.140.ru.html",
-"Poland": "https://trafficban.com/country.poland.home.151.ru.html",
-"Portugal": "https://trafficban.com/country.portugal.home.153.ru.html",
-"Romania": "https://trafficban.com/country.romania.home.157.ru.html",
-"Russia": "https://trafficban.com/country.russia.home.52.ru.html",
-"Serbia": "https://trafficban.com/country.serbia.home.168.ru.html",
-"Slovakia": "https://trafficban.com/country.slovakia.home.172.ru.html",
-"Slovenia": "https://trafficban.com/country.slovenia.home.173.ru.html",
-"Spain": "https://trafficban.com/country.spain.home.75.ru.html",
-"Sweden": "https://trafficban.com/country.sweden.home.182.ru.html",
-"Switzerland": "https://trafficban.com/country.switzerland.home.181.ru.html",
-"Turkey": "https://trafficban.com/country.turkey.home.193.ru.html",
-"Ukraine": "https://trafficban.com/country.ukraine.home.198.ru.html",
-"United Kingdom": "https://trafficban.com/country.united_kingdom.home.205.ru.html",
+    "Poland": "https://trafficban.com/country.poland.home.151.ru.html",
+    "Germany": "https://trafficban.com/country.germany.home.135.ru.html",
+    "France": "https://trafficban.com/country.france.home.56.ru.html"
+    # Добавь другие страны при необходимости
 }
 
-async def parse_country(page, country, url):
+# Прокси список (HTTP формат: ip:port)
+proxies = [
+    "http://user:pass@proxy1.example.com:8080",
+    "http://user:pass@proxy2.example.com:8080",
+    # Добавь свои рабочие прокси
+]
+
+async def parse_country(playwright, country, url):
+    proxy = random.choice(proxies) if proxies else None
+    launch_args = {"headless": True}
+    if proxy:
+        launch_args["proxy"] = {"server": proxy}
+
+    browser = await playwright.chromium.launch(**launch_args)
+    context = await browser.new_context(
+        user_agent=(
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/119.0.0.0 Safari/537.36"
+        ),
+        locale="ru-RU",
+        viewport={"width": 1280, "height": 800},
+        device_scale_factor=1
+    )
+
+    await context.add_init_script("""
+    Object.defineProperty(navigator, 'webdriver', {
+      get: () => undefined
+    });
+    """)
+    page = await context.new_page()
     print(f"▶️ Visiting {url} for {country}")
     await page.goto(url)
     await asyncio.sleep(2)
 
+    results = []
     try:
         await page.wait_for_selector('tbody.tCo', timeout=5000)
+        bans = await page.query_selector_all('tbody.tCo tr')
+
+        for ban in bans:
+            date_el = await ban.query_selector('td:nth-child(2)')
+            time_el = await ban.query_selector('td:nth-child(3)')
+
+            if date_el and time_el:
+                date = (await date_el.text_content()).strip()
+                time_range = (await time_el.text_content()).strip()
+                results.append([country, date, time_range])
     except:
-        print(f"⚠️ [{country}] No table found on the page")
-        os.makedirs('logs', exist_ok=True)
-        content = await page.content()
-        with open(f'logs/{country}.html', 'w', encoding='utf-8') as f:
-            f.write(content)
-        return []
+        print(f"⚠️ [{country}] No data found")
 
-    bans = await page.query_selector_all('tbody.tCo tr')
-    results = []
-
-    for ban in bans:
-        date_el = await ban.query_selector('td:nth-child(2)')
-        time_el = await ban.query_selector('td:nth-child(3)')
-
-        if date_el and time_el:
-            date = (await date_el.text_content()).strip()
-            time_range = (await time_el.text_content()).strip()
-            results.append([country, date, time_range])
-
-    print(f"[{country}] Parsed {len(results)} rows")
+    await browser.close()
     return results
 
 async def main():
     results = []
+    os.makedirs('data', exist_ok=True)
 
     async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=True)
-        context = await browser.new_context(
-            user_agent=(
-                "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
-                "AppleWebKit/537.36 (KHTML, like Gecko) "
-                "Chrome/119.0.0.0 Safari/537.36"
-            ),
-            locale="ru-RU",
-            viewport={"width": 1280, "height": 800},
-            device_scale_factor=1
-        )
+        tasks = [
+            parse_country(p, country, url)
+            for country, url in country_urls.items()
+        ]
+        all_results = await asyncio.gather(*tasks)
+        for result in all_results:
+            results.extend(result)
 
-        await context.add_init_script("""
-        Object.defineProperty(navigator, 'webdriver', {
-          get: () => undefined
-        });
-        """)
-
-        page = await context.new_page()
-
-        for country, url in country_urls.items():
-            country_bans = await parse_country(page, country, url)
-            results.extend(country_bans)
-            await asyncio.sleep(1)
-
-        await browser.close()
-
-    unique_results = []
     seen = set()
-
+    unique_results = []
     for row in results:
         row_tuple = tuple(row)
         if row_tuple not in seen:
@@ -118,7 +88,6 @@ async def main():
 
     print(f"✅ Total unique rows: {len(unique_results)}")
 
-    os.makedirs('data', exist_ok=True)
     with open('data/bans.csv', 'w', newline='', encoding='utf-8') as f:
         writer = csv.writer(f)
         writer.writerow(['Country', 'Date', 'Time Ranges'])
