@@ -6,7 +6,8 @@ st.set_page_config(page_title="Traffic Ban Summary", layout="wide")
 
 st.markdown("🚦 **Traffic Ban Summary Dashboard**")
 
-csv_path = "./Data/bans.csv"
+# Используем корректный путь (регистр важен!)
+csv_path = os.path.join("data", "bans.csv")
 
 if not os.path.exists(csv_path):
     st.error("CSV файл не найден.")
