@@ -1,4 +1,3 @@
-
 import asyncio
 import csv
 from datetime import datetime
@@ -21,8 +20,7 @@ async def get_country_links(page):
 
 async def scrape():
     async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=True)
-        context = await get_stealth_context(browser)
+        context, browser = await get_stealth_context(p.chromium)
         page = await context.new_page()
 
         country_links = await get_country_links(page)
