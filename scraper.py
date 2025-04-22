@@ -92,7 +92,7 @@ proxies = {
 }
 
 async def parse_country(playwright, country, url, proxies=None):
-    print("parse_country called with:", playwright, country, url, proxies=None)
+    print("parse_country called with:", playwright, country, url, "proxies =", proxies)
     proxy = random.choice(proxies) if proxies else None
     print("Proxies list:", proxies)
     launch_args = {"headless": True}
