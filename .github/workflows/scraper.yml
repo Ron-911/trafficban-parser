@@ -2,15 +2,15 @@ name: Traffic Ban Scraper
 
 on:
   schedule:
-    - cron: '0 6 * * *'  # запуск каждый день в 6 утра
-  workflow_dispatch:     # возможность запуска вручную
+    - cron: '0 6 * * *'  # Запуск каждый день в 6 утра по UTC
+  workflow_dispatch:     # Возможность запуска вручную из GitHub UI
 
 jobs:
   scraper_job:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repo
+      - name: Checkout repository
         uses: actions/checkout@v4
 
       - name: Set up Python
@@ -26,12 +26,12 @@ jobs:
       - name: Run scraper
         run: python scraper.py
 
-      - name: Commit and Push changes
+      - name: Commit and push changes
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           git config --global user.name 'github-actions'
           git config --global user.email 'github-actions@github.com'
-          git add data/bans.csv failed_countries.txt || true
-          git commit -m "Update bans.csv and failed_countries.txt" || echo "No changes to commit"
+          git add data/bans.csv data/failed_countries.txt
+          git commit -m "🛑 Update traffic ban data [auto]" || echo "No changes to commit"
           git push https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }} HEAD:${{ github.ref_name }}
