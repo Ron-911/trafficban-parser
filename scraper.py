@@ -4,21 +4,22 @@ from datetime import datetime
 from playwright.async_api import async_playwright
 from session_manager import get_stealth_context
 
-OUTPUT_FILE = "bans.csv"
-FAILED_FILE = "failed_countries.txt"
+OUTPUT_FILE = "data/bans.csv"
+FAILED_FILE = "data/failed_countries.txt"
 
 async def get_country_links(page):
     await page.goto("https://www.trafficban.com/", timeout=60000)
-    await page.wait_for_timeout(3000)  # доп. пауза
-    await page.wait_for_selector("#countrySelect option", timeout=60000)
+    await page.wait_for_selector("div#rightColumn .menu .item")
+    country_elements = await page.query_selector_all("div#rightColumn .menu .item")
 
-    options = await page.query_selector_all("#countrySelect option")
     country_links = {}
-    for option in options:
-        value = await option.get_attribute("value")
-        text = await option.inner_text()
-        if value and value != "0":
-            country_links[text.strip()] = f"https://www.trafficban.com{value}"
+    for el in country_elements:
+        href = await el.get_attribute("href")
+        text = await el.inner_text()
+        if href and text:
+            url = f"https://www.trafficban.com/{href}"
+            country_name = text.split("|")[-1].strip()
+            country_links[country_name] = url
     return country_links
 
 async def scrape():
