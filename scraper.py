@@ -1,32 +1,36 @@
 import asyncio
 import csv
+import os
 from datetime import datetime
 from playwright.async_api import async_playwright
 from session_manager import get_stealth_context
 
-OUTPUT_FILE = "data/bans.csv"
-FAILED_FILE = "data/failed_countries.txt"
+# Папка и файлы
+OUTPUT_DIR = "Data"
+OUTPUT_FILE = os.path.join(OUTPUT_DIR, "bans.csv")
+FAILED_FILE = os.path.join(OUTPUT_DIR, "failed_countries.txt")
+
+# Создаём папку, если её нет
+os.makedirs(OUTPUT_DIR, exist_ok=True)
 
 async def get_country_links(page):
     await page.goto("https://www.trafficban.com/", timeout=60000)
-    await page.wait_for_selector("div#rightColumn .menu .item")
-    country_elements = await page.query_selector_all("div#rightColumn .menu .item")
-
+    await page.wait_for_selector("#rightColumn .menu a.item")
+    options = await page.query_selector_all("#rightColumn .menu a.item")
     country_links = {}
-    for el in country_elements:
-        href = await el.get_attribute("href")
-        text = await el.inner_text()
+    for option in options:
+        href = await option.get_attribute("href")
+        text = await option.inner_text()
         if href and text:
-            url = f"https://www.trafficban.com/{href}"
             country_name = text.split("|")[-1].strip()
-            country_links[country_name] = url
+            country_links[country_name] = f"https://www.trafficban.com/{href}"
     return country_links
 
 async def scrape():
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=True)
         try:
-            context = await get_stealth_context(browser)
+            context, browser = await get_stealth_context(p.chromium)
         except Exception as e:
             print(f"❌ Не удалось создать stealth context: {e}")
             await browser.close()
@@ -46,6 +50,11 @@ async def scrape():
                 await page.wait_for_selector("table.table", timeout=10000)
 
                 table = await page.query_selector("table.table")
+                if not table:
+                    failed_countries.append(country_name)
+                    await page.close()
+                    continue
+
                 html_content = await table.inner_html()
                 if "No data" in html_content or not html_content.strip():
                     failed_countries.append(country_name)
