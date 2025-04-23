@@ -1,12 +1,12 @@
 import asyncio
 import csv
+from collections import defaultdict
 from playwright.async_api import async_playwright
 from session_manager import get_stealth_context
 
 OUTPUT_FILE = "data/bans.csv"
 FAILED_FILE = "data/failed_countries.txt"
 
-# Предопределённые ссылки
 country_links = {
     "Albania": "https://trafficban.com/country.albania.home.2.ru.html",
     "Austria": "https://trafficban.com/country.austria.home.14.ru.html",
@@ -56,13 +56,13 @@ async def scrape():
         context = await get_stealth_context(browser)
         page = await context.new_page()
 
-        rows = []
+        bans = defaultdict(list)
         failed_countries = []
 
         for country_name, url in country_links.items():
             try:
                 await page.goto(url, timeout=60000)
-                await page.wait_for_selector("table.day", timeout=15000)
+                await page.wait_for_selector("table.day", state="attached", timeout=15000)
 
                 tables = await page.query_selector_all("table.day")
                 if not tables:
@@ -75,9 +75,9 @@ async def scrape():
                     for tr in trs:
                         tds = await tr.query_selector_all("td")
                         if len(tds) >= 2:
-                            date = await tds[0].inner_text()
-                            time_range = await tds[1].inner_text()
-                            rows.append([country_name, date.strip(), time_range.strip()])
+                            date = (await tds[0].inner_text()).strip()
+                            time_range = (await tds[1].inner_text()).strip()
+                            bans[(country_name, date)].append(time_range)
                             has_data = True
 
                 if not has_data:
@@ -89,13 +89,12 @@ async def scrape():
 
         await browser.close()
 
-        # Сохраняем CSV
         with open(OUTPUT_FILE, "w", newline="", encoding="utf-8") as f:
             writer = csv.writer(f)
             writer.writerow(["Country", "Date", "Time Ranges"])
-            writer.writerows(rows)
+            for (country, date), time_ranges in bans.items():
+                writer.writerow([country, date, "; ".join(time_ranges)])
 
-        # Сохраняем неудачные страны
         with open(FAILED_FILE, "w", encoding="utf-8") as f:
             for c in failed_countries:
                 f.write(c + "\n")
