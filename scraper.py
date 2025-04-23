@@ -50,7 +50,6 @@ country_links = {
     "United Kingdom": "https://trafficban.com/country.united_kingdom.home.205.ru.html",
 }
 
-
 async def scrape():
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=True)
@@ -61,21 +60,19 @@ async def scrape():
         if os.path.exists(OUTPUT_FILE):
             with open(OUTPUT_FILE, "r", encoding="utf-8") as f:
                 reader = csv.reader(f)
-                next(reader, None)  # Skip header
+                next(reader, None)
                 existing_rows = {tuple(row) for row in reader}
 
         new_rows = set()
         failed_countries = set()
 
         for country_name, url in country_links.items():
-            await page.goto(url, timeout=60000)
+            try:
+                await page.goto(url, timeout=60000)
+                rows = await page.query_selector_all("table.ui.table tbody.tCo tr")
+                has_data = False
 
-            tables = await page.query_selector_all("table.ui.celled.center.aligned.unstackable.table.seven.column.day")
-
-            has_data = False
-            for table in tables:
-                trs = await table.query_selector_all("tbody tr")
-                for tr in trs:
+                for tr in rows:
                     tds = await tr.query_selector_all("td")
                     if len(tds) >= 3:
                         date = (await tds[1].inner_text()).strip()
@@ -85,7 +82,11 @@ async def scrape():
                             new_rows.add(row)
                         has_data = True
 
-            if not has_data:
+                if not has_data:
+                    failed_countries.add(country_name)
+
+            except Exception as e:
+                print(f"❌ Ошибка при загрузке {country_name}: {e}")
                 failed_countries.add(country_name)
 
         await browser.close()
@@ -96,7 +97,7 @@ async def scrape():
                 writer = csv.writer(f)
                 if write_header:
                     writer.writerow(["Country", "Date", "Time Ranges"])
-                writer.writerows(new_rows)
+                writer.writerows(sorted(new_rows))
 
         if failed_countries:
             existing_failed = set()
