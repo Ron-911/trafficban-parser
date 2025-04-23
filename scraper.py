@@ -62,24 +62,24 @@ async def scrape():
         for country_name, url in country_links.items():
             try:
                 await page.goto(url, timeout=60000)
-                await page.wait_for_selector("table.day", timeout=15000)
+                await page.wait_for_selector("table.day", state="attached", timeout=15000)
 
                 tables = await page.query_selector_all("table.day")
-                if not tables:
-                    failed_countries.append(country_name)
-                    continue
-
                 has_data = False
+
                 for table in tables:
+                    visible = await table.evaluate("el => !el.hidden && el.offsetParent !== null")
+                    if not visible:
+                        continue
+
                     trs = await table.query_selector_all("tbody tr")
                     for tr in trs:
                         tds = await tr.query_selector_all("td")
                         if len(tds) >= 3:
-                            date_text = (await tds[1].inner_text()).strip()
-                            time_text = (await tds[2].inner_text()).strip()
-                            if date_text and time_text:
-                                rows.append([country_name, date_text, time_text])
-                                has_data = True
+                            date = await tds[1].inner_text()
+                            time_range = await tds[2].inner_text()
+                            rows.append([country_name, date.strip(), time_range.strip()])
+                            has_data = True
 
                 if not has_data:
                     failed_countries.append(country_name)
@@ -90,11 +90,13 @@ async def scrape():
 
         await browser.close()
 
+        # Сохраняем CSV
         with open(OUTPUT_FILE, "w", newline="", encoding="utf-8") as f:
             writer = csv.writer(f)
             writer.writerow(["Country", "Date", "Time Ranges"])
             writer.writerows(rows)
 
+        # Сохраняем неудачные страны
         with open(FAILED_FILE, "w", encoding="utf-8") as f:
             for c in failed_countries:
                 f.write(c + "\n")
