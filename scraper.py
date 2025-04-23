@@ -4,12 +4,14 @@ from datetime import datetime
 from playwright.async_api import async_playwright
 from session_manager import get_stealth_context
 
-OUTPUT_FILE = "traffic_bans.csv"
+OUTPUT_FILE = "bans.csv"
 FAILED_FILE = "failed_countries.txt"
 
 async def get_country_links(page):
     await page.goto("https://www.trafficban.com/", timeout=60000)
-    await page.wait_for_selector("#countrySelect option")
+    await page.wait_for_timeout(3000)  # доп. пауза
+    await page.wait_for_selector("#countrySelect option", timeout=60000)
+
     options = await page.query_selector_all("#countrySelect option")
     country_links = {}
     for option in options:
