@@ -1,27 +1,28 @@
+# scraper.py
+
 import asyncio
 import csv
 from datetime import datetime
 from playwright.async_api import async_playwright
 from session_manager import get_stealth_context
-import os
 
 OUTPUT_FILE = "data/bans.csv"
 FAILED_FILE = "data/failed_countries.txt"
 
 async def get_country_links(page):
     await page.goto("https://www.trafficban.com/", timeout=60000)
-    await page.wait_for_selector("#rightColumn .menu a.item")
-    links = await page.query_selector_all("#rightColumn .menu a.item")
+    await page.wait_for_selector("div#rightColumn .menu a.item", timeout=10000)
+    links = await page.query_selector_all("div#rightColumn .menu a.item")
+    
     country_links = {}
     for link in links:
         href = await link.get_attribute("href")
-        name = await link.inner_text()
-        if href and name:
-            country_links[name.strip()] = f"https://www.trafficban.com/{href}"
+        text = await link.inner_text()
+        if href and text:
+            country_links[text.strip()] = f"https://www.trafficban.com/{href}"
     return country_links
 
 async def scrape():
-    os.makedirs("data", exist_ok=True)
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=True)
         try:
@@ -42,15 +43,16 @@ async def scrape():
             try:
                 page = await context.new_page()
                 await page.goto(url, timeout=60000)
-                await page.wait_for_selector("table.table", timeout=10000)
+                await page.wait_for_selector("table.day", timeout=15000)
 
-                tables = await page.query_selector_all("table.table")
-                if not tables:
+                table = await page.query_selector("table.day")
+                html_content = await table.inner_html()
+
+                if "No data" in html_content or not html_content.strip():
                     failed_countries.append(country_name)
                     await page.close()
                     continue
 
-                table = tables[0]
                 rows_html = await table.query_selector_all("tbody tr")
                 for row in rows_html:
                     cells = await row.query_selector_all("td")
@@ -64,11 +66,13 @@ async def scrape():
 
         await browser.close()
 
+        # Сохраняем таблицу
         with open(OUTPUT_FILE, "w", newline="", encoding="utf-8") as f:
             writer = csv.writer(f)
             writer.writerow(["Country", "Date", "From", "To", "Vehicles", "Description"])
             writer.writerows(rows)
 
+        # Сохраняем список стран с ошибками
         with open(FAILED_FILE, "w", encoding="utf-8") as f:
             for c in failed_countries:
                 f.write(c + "\n")
