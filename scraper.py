@@ -6,6 +6,7 @@ from session_manager import get_stealth_context
 OUTPUT_FILE = "data/bans.csv"
 FAILED_FILE = "failed_countries.txt"
 
+# Заранее заданные ссылки
 country_links = {
     "Albania": "https://trafficban.com/country.albania.home.2.ru.html",
     "Austria": "https://trafficban.com/country.austria.home.14.ru.html",
@@ -46,59 +47,62 @@ country_links = {
     "Switzerland": "https://trafficban.com/country.switzerland.home.181.ru.html",
     "Turkey": "https://trafficban.com/country.turkey.home.193.ru.html",
     "Ukraine": "https://trafficban.com/country.ukraine.home.198.ru.html",
-    "United Kingdom": "https://trafficban.com/country.united_kingdom.home.205.ru.html"
+    "United Kingdom": "https://trafficban.com/country.united_kingdom.home.205.ru.html",
 }
-
-
-async def scrape_country(context, country, url):
-    rows = []
-    try:
-        page = await context.new_page()
-        await page.goto(url, timeout=60000)
-        await page.wait_for_selector("table.day", state="attached", timeout=15000)
-
-        if table:
-            rows_html = await table.query_selector_all("tbody tr")
-            for row in rows_html:
-                cells = await row.query_selector_all("td")
-                values = [await cell.inner_text() for cell in cells]
-                rows.append([country] + values)
-
-        await page.close()
-        return rows, None
-    except Exception as e:
-        print(f"❌ Ошибка при загрузке {country}: {e}")
-        return [], country
 
 
 async def scrape():
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=True)
-        context = await get_stealth_context(browser)
+        try:
+            context = await get_stealth_context(browser)
+        except Exception as e:
+            print(f"❌ Не удалось создать stealth context: {e}")
+            await browser.close()
+            return
 
-        tasks = [scrape_country(context, country, url) for country, url in country_links.items()]
-        results = await asyncio.gather(*tasks)
+        rows = []
+        failed_countries = []
 
-        all_rows = []
-        failed = []
-        for country_rows, fail in results:
-            all_rows.extend(country_rows)
-            if fail:
-                failed.append(fail)
+        for country_name, url in country_links.items():
+            try:
+                page = await context.new_page()
+                await page.goto(url, timeout=60000)
+                await page.wait_for_selector("table.day", state="attached", timeout=15000)
+                table = await page.query_selector("table.day")
+
+                if not table:
+                    raise ValueError("Table not found")
+
+                html_content = await table.inner_html()
+                if "Нет данных" in html_content or not html_content.strip():
+                    raise ValueError("No data")
+
+                rows_html = await table.query_selector_all("tbody tr")
+                for row in rows_html:
+                    cells = await row.query_selector_all("td")
+                    values = [await cell.inner_text() for cell in cells]
+                    rows.append([country_name] + values)
+
+                await page.close()
+            except Exception as e:
+                print(f"❌ Ошибка при загрузке {country_name}: {e}")
+                failed_countries.append(country_name)
 
         await browser.close()
 
         with open(OUTPUT_FILE, "w", newline="", encoding="utf-8") as f:
             writer = csv.writer(f)
             writer.writerow(["Country", "Date", "From", "To", "Vehicles", "Description"])
-            writer.writerows(all_rows)
+            writer.writerows(rows)
 
-        if failed:
-            with open(FAILED_FILE, "w", encoding="utf-8") as f:
-                for c in failed:
-                    f.write(c + "\n")
+        with open(FAILED_FILE, "w", encoding="utf-8") as f:
+            for c in failed_countries:
+                f.write(c + "\n")
+
+        if failed_countries:
             print("\n⚠️ Не удалось получить данные для:")
-            for c in failed:
+            for c in failed_countries:
                 print(f"- {c}")
         else:
             print("✅ Все страны успешно загружены")
