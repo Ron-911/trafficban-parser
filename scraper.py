@@ -55,7 +55,7 @@ async def scrape_country(context, country, url):
     try:
         page = await context.new_page()
         await page.goto(url, timeout=60000)
-        table = await page.wait_for_selector("table.day", timeout=15000, state="visible")
+        await page.wait_for_selector("table.day", state="attached", timeout=15000)
 
         if table:
             rows_html = await table.query_selector_all("tbody tr")
