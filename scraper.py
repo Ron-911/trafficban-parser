@@ -72,15 +72,15 @@ async def scrape():
                 rows = await page.query_selector_all("table.ui.table tbody.tCo tr")
                 has_data = False
 
-                for tr in rows:
-                    tds = await tr.query_selector_all("td")
-                    if len(tds) >= 3:
-                        date = (await tds[1].inner_text()).strip()
-                        time_range = (await tds[2].inner_text()).strip()
-                        row = (country_name, date, time_range)
-                        if row not in existing_rows:
-                            new_rows.add(row)
-                        has_data = True
+                   for tr in rows:
+                        tds = await tr.query_selector_all("td")
+                        if len(tds) >= 3:
+                            date = (await tds[1].inner_text()).strip()
+                            time_range = (await tds[2].inner_text()).strip()
+                            row = (country_name, date, time_range)
+                                if row not in existing_rows:
+                                    new_rows.add(row)
+                                    has_data = True
 
                 if not has_data:
                     failed_countries.add(country_name)
