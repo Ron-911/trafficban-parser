@@ -4,9 +4,9 @@ from playwright.async_api import async_playwright
 from session_manager import get_stealth_context
 
 OUTPUT_FILE = "data/bans.csv"
-FAILED_FILE = "failed_countries.txt"
+FAILED_FILE = "data/failed_countries.txt"
 
-# Заранее заданные ссылки
+# Предопределённые ссылки
 country_links = {
     "Albania": "https://trafficban.com/country.albania.home.2.ru.html",
     "Austria": "https://trafficban.com/country.austria.home.14.ru.html",
@@ -50,63 +50,57 @@ country_links = {
     "United Kingdom": "https://trafficban.com/country.united_kingdom.home.205.ru.html",
 }
 
-
 async def scrape():
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=True)
-        try:
-            context = await get_stealth_context(browser)
-        except Exception as e:
-            print(f"❌ Не удалось создать stealth context: {e}")
-            await browser.close()
-            return
+        context = await get_stealth_context(browser)
+        page = await context.new_page()
 
         rows = []
         failed_countries = []
 
         for country_name, url in country_links.items():
             try:
-                page = await context.new_page()
                 await page.goto(url, timeout=60000)
-                await page.wait_for_selector("table.day", state="attached", timeout=15000)
-                table = await page.query_selector("table.day")
+                await page.wait_for_selector("table.day", timeout=15000)
 
-                if not table:
-                    raise ValueError("Table not found")
+                tables = await page.query_selector_all("table.day")
+                if not tables:
+                    failed_countries.append(country_name)
+                    continue
 
-                html_content = await table.inner_html()
-                if "Нет данных" in html_content or not html_content.strip():
-                    raise ValueError("No data")
+                has_data = False
+                for table in tables:
+                    trs = await table.query_selector_all("tbody tr")
+                    for tr in trs:
+                        tds = await tr.query_selector_all("td")
+                        if len(tds) >= 2:
+                            date = await tds[0].inner_text()
+                            time_range = await tds[1].inner_text()
+                            rows.append([country_name, date.strip(), time_range.strip()])
+                            has_data = True
 
-                rows_html = await table.query_selector_all("tbody tr")
-                for row in rows_html:
-                    cells = await row.query_selector_all("td")
-                    values = [await cell.inner_text() for cell in cells]
-                    rows.append([country_name] + values)
+                if not has_data:
+                    failed_countries.append(country_name)
 
-                await page.close()
             except Exception as e:
                 print(f"❌ Ошибка при загрузке {country_name}: {e}")
                 failed_countries.append(country_name)
 
         await browser.close()
 
+        # Сохраняем CSV
         with open(OUTPUT_FILE, "w", newline="", encoding="utf-8") as f:
             writer = csv.writer(f)
-            writer.writerow(["Country", "Date", "From", "To", "Vehicles", "Description"])
+            writer.writerow(["Country", "Date", "Time Ranges"])
             writer.writerows(rows)
 
+        # Сохраняем неудачные страны
         with open(FAILED_FILE, "w", encoding="utf-8") as f:
             for c in failed_countries:
                 f.write(c + "\n")
 
-        if failed_countries:
-            print("\n⚠️ Не удалось получить данные для:")
-            for c in failed_countries:
-                print(f"- {c}")
-        else:
-            print("✅ Все страны успешно загружены")
-
+        print("✅ Готово!")
 
 if __name__ == "__main__":
     asyncio.run(scrape())
